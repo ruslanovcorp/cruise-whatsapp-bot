@@ -3,3 +3,4 @@ uvicorn
 sqlalchemy
 asyncpg
 httpx
+python-dotenv
