@@ -1,4 +1,7 @@
 import os
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import Depends, HTTPException, status
+import secrets
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -164,63 +167,165 @@ async def receive_message(request: Request):
 ########### FRONTEND ##############
 ###################################
 
+##### SECURITY #######
+security = HTTPBasic()
+
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, ADMIN_USERNAME)
+    correct_password = secrets.compare_digest(credentials.password, ADMIN_PASSWORD)
+
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    
+    
+###### DELETE ##########
+@app.delete("/delete-qa/{question}")
+async def delete_qa(question: str, user: str = Depends(verify_admin)):
+    async with engine.connect() as conn:
+        await conn.execute(
+            text("DELETE FROM knowledge_base WHERE question = :q"),
+            {"q": question}
+        )
+        await conn.commit()
+    return {"status": "deleted"}
+
+###### UPDATE ##########
+@app.put("/update-qa")
+async def update_qa(
+    question: str = Body(...),
+    answer: str = Body(...),
+    user: str = Depends(verify_admin)
+):
+    async with engine.connect() as conn:
+        await conn.execute(
+            text("""
+                UPDATE knowledge_base
+                SET answer = :answer
+                WHERE question = :question
+            """),
+            {"question": question, "answer": answer}
+        )
+        await conn.commit()
+    return {"status": "updated"}
+
+###### FRONT ##########
+
 @app.get("/admin", response_class=HTMLResponse)
-async def admin_panel():
+async def admin_panel(user: str = Depends(verify_admin)):
     return """
     <html>
     <head>
         <title>Cruise Bot Admin</title>
         <style>
-            body { font-family: Arial; max-width: 800px; margin: 40px auto; }
-            input, textarea { width: 100%; padding: 8px; margin: 5px 0; }
-            button { padding: 10px; margin-top: 10px; }
-            .qa { border: 1px solid #ccc; padding: 10px; margin-top: 10px; }
+            body {
+                font-family: Arial;
+                background: #f4f6f9;
+                max-width: 900px;
+                margin: 40px auto;
+            }
+            h2 { color: #1a2b49; }
+            .card {
+                background: white;
+                padding: 20px;
+                margin-bottom: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            }
+            input, textarea {
+                width: 100%;
+                padding: 10px;
+                margin: 5px 0;
+                border-radius: 5px;
+                border: 1px solid #ccc;
+            }
+            button {
+                padding: 8px 12px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+            }
+            .save { background: #2d89ef; color: white; }
+            .delete { background: #e81123; color: white; }
+            .update { background: #107c10; color: white; }
         </style>
     </head>
     <body>
+
         <h2>🚢 Cruise Bot Admin Panel</h2>
 
-        <h3>Add Question & Answer</h3>
-        <input id="question" placeholder="Question keyword">
-        <textarea id="answer" placeholder="Bot answer"></textarea>
-        <button onclick="addQA()">Save</button>
+        <div class="card">
+            <h3>Add Question & Answer</h3>
+            <input id="question" placeholder="Question keyword">
+            <textarea id="answer" placeholder="Bot answer"></textarea>
+            <button class="save" onclick="addQA()">Save</button>
+        </div>
 
-        <h3>Existing Q&A</h3>
-        <div id="qa-list"></div>
+        <div class="card">
+            <h3>Knowledge Base</h3>
+            <div id="qa-list"></div>
+        </div>
 
-        <script>
-            async function loadQA() {
-                const res = await fetch('/qa-list');
-                const data = await res.json();
+<script>
+async function loadQA() {
+    const res = await fetch('/qa-list');
+    const data = await res.json();
 
-                const container = document.getElementById('qa-list');
-                container.innerHTML = "";
+    const container = document.getElementById('qa-list');
+    container.innerHTML = "";
 
-                data.forEach(item => {
-                    container.innerHTML += `
-                        <div class="qa">
-                            <strong>Q:</strong> ${item.question}<br>
-                            <strong>A:</strong> ${item.answer}
-                        </div>
-                    `;
-                });
-            }
+    data.forEach(item => {
+        container.innerHTML += `
+            <div style="margin-bottom:15px;">
+                <input value="${item.question}" id="q-${item.question}">
+                <textarea id="a-${item.question}">${item.answer}</textarea>
+                <button class="update" onclick="updateQA('${item.question}')">Update</button>
+                <button class="delete" onclick="deleteQA('${item.question}')">Delete</button>
+                <hr>
+            </div>
+        `;
+    });
+}
 
-            async function addQA() {
-                const question = document.getElementById('question').value;
-                const answer = document.getElementById('answer').value;
+async function addQA() {
+    const question = document.getElementById('question').value;
+    const answer = document.getElementById('answer').value;
 
-                await fetch('/add-qa', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question, answer })
-                });
+    await fetch('/add-qa', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question, answer})
+    });
 
-                loadQA();
-            }
+    loadQA();
+}
 
-            loadQA();
-        </script>
+async function deleteQA(question) {
+    await fetch(`/delete-qa/${question}`, {method: 'DELETE'});
+    loadQA();
+}
+
+async function updateQA(question) {
+    const answer = document.getElementById(`a-${question}`).value;
+
+    await fetch('/update-qa', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question, answer})
+    });
+
+    loadQA();
+}
+
+loadQA();
+</script>
+
     </body>
     </html>
     """
