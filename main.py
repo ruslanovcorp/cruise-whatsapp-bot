@@ -153,7 +153,7 @@ async def receive_message(request: Request):
 
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=data)
-        print("Meta status:", response.status_code)
-        print("Meta response:", response.text)
+        if response.status_code != 200:
+            print("Meta error:", response.text)
 
     return {"status": "replied"}
