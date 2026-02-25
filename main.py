@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Request
 import httpx
 from sqlalchemy import text
@@ -6,7 +8,7 @@ from db import engine
 
 app = FastAPI()
 
-ACCESS_TOKEN = "EAAc6MUxveJ0BQ0KR0NpRjde0IrcBLpCJzF5Gy5ZA5LwAmRn6VbzY41mU7gt4lQ8ZBxHM9acaSmLghRspcMTcyeIZChmOemZBfX4ZCvxNGwpKDrixVZCNRCTk1SrZBJH6YsjFWBcv3gEDMpmJTtHiUbPE5IXOETiSVXsUWKUOUCt0g2RVLfIZC8yb4yUb2GnHdJ5j3yN2VptzqCZCwQbPIWROsDwnHYyZAkRV6TBZB8EkKdk1jEk383YwDZACvCArnT9BIZBEGJGvJkrX9RgtHwrbqZCt8fZAPCx"
+ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 PHONE_NUMBER_ID = "1048865108303356"
 
 @app.get("/")
